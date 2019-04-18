@@ -11,6 +11,7 @@
 #define MAX_NICKNAME_LENGTH 50
 #define ADDRESSES_SIZE 15360
 #define MAX_MESSAGE_LENGTH 1024
+#define SLEEP_TIME 5000
 
 #pragma comment(lib, "Ws2_32.lib")
 #pragma comment(lib, "iphlpapi.lib")
@@ -39,14 +40,6 @@ typedef struct ThreadParameters
 	char *OwnNickname;
 	SOCKET UDPSocket;
 } ThreadParameters;
-
-typedef struct MessageHistory
-{
-	char *Message;
-	char *SenderName;
-	char *SenderIP;
-	SYSTEMTIME Time;
-} MessageHistory;
 
 char *GetGatewayAddress(PIP_ADAPTER_ADDRESSES pAddresses)
 {
@@ -183,7 +176,7 @@ DWORD WINAPI UDPCheckThread(LPVOID lpParam)
 		else
 		{
 			printf("select : %d\n", WSAGetLastError());
-			Sleep(5000);
+			Sleep(SLEEP_TIME);
 		}
 		ReleaseMutex(((ThreadParameters *)lpParam)->hMutex);
 	}
@@ -228,14 +221,14 @@ DWORD WINAPI TCPListeningThread(LPVOID lpParam)
 	if (bind(ListeningSocket, (sockaddr *)&((ThreadParameters *)lpParam)->OwnAddress, sizeof(sockaddr_in)) == SOCKET_ERROR)
 	{
 		printf("ListeningSocket: bind return error: %d\n", WSAGetLastError());
-		Sleep(5000);
+		Sleep(SLEEP_TIME);
 		return 1;
 	}
 
 	if (listen(ListeningSocket, SOMAXCONN) == SOCKET_ERROR)
 	{
 		printf("ListeningSocket: listen return error: %d\n", WSAGetLastError());
-		Sleep(5000);
+		Sleep(SLEEP_TIME);
 		return 1;
 	}
 
@@ -279,7 +272,7 @@ int main(int argc, char **argv)
 	if (WSAStartup(MAKEWORD(2,2),&wsaDate))
 	{
 		printf("WSAStartup return error: %d\n", WSAGetLastError());
-		Sleep(5000);
+		Sleep(SLEEP_TIME);
 		return 1;
 	}
 
@@ -291,7 +284,7 @@ int main(int argc, char **argv)
 	if (BroadcastSocket == INVALID_SOCKET)
 	{
 		printf("BroadcastSocket: socket return error: %d\n", WSAGetLastError());
-		Sleep(5000);
+		Sleep(SLEEP_TIME);
 		return 1;
 	}
 
@@ -299,7 +292,7 @@ int main(int argc, char **argv)
 	if (setsockopt(BroadcastSocket, SOL_SOCKET, SO_BROADCAST, (char *)&BroadcastResolution, sizeof(bool)) == SOCKET_ERROR)
 	{
 		printf("BroadcastSocket: socket return error: %d\n", WSAGetLastError());
-		Sleep(5000);
+		Sleep(SLEEP_TIME);
 		return 1;
 	}
 
@@ -314,7 +307,7 @@ int main(int argc, char **argv)
 	if (bind(BroadcastSocket, (sockaddr *)&OwnIPAddress, sizeof(OwnIPAddress)) == SOCKET_ERROR)
 	{
 		printf("BroadcastSocket: bind return error: %d\n", WSAGetLastError());
-		Sleep(5000);
+		Sleep(SLEEP_TIME);
 		return 1;
 	}
 	
@@ -326,7 +319,7 @@ int main(int argc, char **argv)
 	if (sendto(BroadcastSocket, UserNickname, strlen(UserNickname), 0, (sockaddr *)&BroadcastAddress, sizeof(BroadcastAddress)) == SOCKET_ERROR)
 	{
 		printf("BroadcastSocket: sendto return error: %d\n", WSAGetLastError());
-		Sleep(5000);
+		Sleep(SLEEP_TIME);
 		return 1;
 	}
 
@@ -359,7 +352,7 @@ int main(int argc, char **argv)
 	pThreadParam->OwnNickname = UserNickname;
 	pThreadParam->UDPSocket = BroadcastSocket;
 
-	HANDLE hMutexesArr[2];
+	HANDLE hThreadArr[2];
 
 	while (int Ret = select(0, &BroadcastSocketList, NULL, NULL, &WaitingRecvTime))
 	{
@@ -388,8 +381,8 @@ int main(int argc, char **argv)
 			printf("BroadcastSocket: select return error: %d\n", WSAGetLastError());
 	}   
 
-	hMutexesArr[0] = CreateThread(NULL, 0, UDPCheckThread, pThreadParam, 0, NULL);
-	hMutexesArr[1] = CreateThread(NULL, 0, TCPListeningThread, pThreadParam, 0, NULL);
+	hThreadArr[0] = CreateThread(NULL, 0, UDPCheckThread, pThreadParam, 0, NULL);
+	hThreadArr[1] = CreateThread(NULL, 0, TCPListeningThread, pThreadParam, 0, NULL);
 
 	bool ContinueWork = true;
 
@@ -415,10 +408,10 @@ int main(int argc, char **argv)
 		ReleaseMutex(pThreadParam->hMutex);
 	}
 	WaitForSingleObject(pThreadParam->hMutex, INFINITE);
-	TerminateThread(hMutexesArr[0], 0);
-	TerminateThread(hMutexesArr[1], 0);
-	CloseHandle(hMutexesArr[0]);
-	CloseHandle(hMutexesArr[1]);
+	TerminateThread(hThreadArr[0], 0);
+	TerminateThread(hThreadArr[1], 0);
+	CloseHandle(hThreadArr[0]);
+	CloseHandle(hThreadArr[1]);
 	FreeUserInformation(&UsersListHeader);
 
 	if (closesocket(pThreadParam->UDPSocket) == SOCKET_ERROR)
